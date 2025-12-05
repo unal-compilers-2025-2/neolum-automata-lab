@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, ListTree, Play, HelpCircle } from 'lucide-react';
+import { Sparkles, ListTree, Play, HelpCircle, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -9,22 +9,35 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { Automaton, validateString } from '@/lib/automata';
 
 interface InputPanelProps {
   onRegexSubmit: (regex: string) => void;
   onEdgeListSubmit: (edges: string) => void;
+  dfa: Automaton | null;
 }
 
-export function InputPanel({ onRegexSubmit, onEdgeListSubmit }: InputPanelProps) {
+export function InputPanel({ onRegexSubmit, onEdgeListSubmit, dfa }: InputPanelProps) {
   const [activeTab, setActiveTab] = useState<'regex' | 'edges'>('regex');
   const [regex, setRegex] = useState('');
   const [edgeList, setEdgeList] = useState('');
+  const [testString, setTestString] = useState('');
+  const [validationResult, setValidationResult] = useState<boolean | null>(null);
 
   const handleSubmit = () => {
     if (activeTab === 'regex' && regex.trim()) {
       onRegexSubmit(regex.trim());
     } else if (activeTab === 'edges' && edgeList.trim()) {
       onEdgeListSubmit(edgeList.trim());
+    }
+    setValidationResult(null);
+    setTestString('');
+  };
+
+  const handleValidate = () => {
+    if (dfa) {
+      const result = validateString(dfa, testString);
+      setValidationResult(result);
     }
   };
 
@@ -158,6 +171,67 @@ accept: q2`}
           Generar Autómatas
         </Button>
       </motion.div>
+
+      {/* String validation section */}
+      <AnimatePresence>
+        {dfa && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mt-6 pt-6 border-t border-primary/20"
+          >
+            <label className="text-sm font-mono text-muted-foreground mb-2 block">
+              Validar Cadena
+            </label>
+            <div className="flex gap-2">
+              <Input
+                value={testString}
+                onChange={(e) => {
+                  setTestString(e.target.value);
+                  setValidationResult(null);
+                }}
+                placeholder="Ingresa una cadena..."
+                className="neon-input font-mono flex-1"
+                onKeyDown={(e) => e.key === 'Enter' && handleValidate()}
+              />
+              <Button
+                onClick={handleValidate}
+                className="neon-button px-4"
+                variant="outline"
+              >
+                Probar
+              </Button>
+            </div>
+            <AnimatePresence mode="wait">
+              {validationResult !== null && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className={`mt-3 p-3 rounded-lg flex items-center gap-2 font-mono text-sm ${
+                    validationResult
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                      : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                  }`}
+                >
+                  {validationResult ? (
+                    <>
+                      <CheckCircle className="w-5 h-5" />
+                      <span>"{testString}" es <strong>aceptada</strong></span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-5 h-5" />
+                      <span>"{testString}" es <strong>rechazada</strong></span>
+                    </>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

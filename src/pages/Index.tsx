@@ -95,6 +95,7 @@ const Index = () => {
             <InputPanel
               onRegexSubmit={handleRegexSubmit}
               onEdgeListSubmit={handleEdgeListSubmit}
+              dfa={dfa}
             />
             <VisualizationPanel
               nfaLambda={nfaLambda}
