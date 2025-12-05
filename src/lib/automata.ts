@@ -348,6 +348,25 @@ export function nfaToDFA(nfa: Automaton): Automaton {
   };
 }
 
+// Validate if a string is accepted by a DFA
+export function validateString(dfa: Automaton, input: string): boolean {
+  const startState = dfa.states.find(s => s.isStart);
+  if (!startState) return false;
+
+  let currentState = startState.id;
+
+  for (const symbol of input) {
+    const transition = dfa.transitions.find(
+      t => t.from === currentState && t.symbol === symbol
+    );
+    if (!transition) return false;
+    currentState = transition.to;
+  }
+
+  const finalState = dfa.states.find(s => s.id === currentState);
+  return finalState?.isAccept ?? false;
+}
+
 // Parse edge list to NFA-λ
 export function parseEdgeList(input: string): Automaton {
   const lines = input.trim().split('\n').filter(l => l.trim());
