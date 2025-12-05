@@ -108,7 +108,7 @@ const Index = () => {
         {/* Footer */}
         <footer className="py-4 text-center text-sm text-muted-foreground border-t border-border/30">
           <p className="font-mono">
-            <span className="neon-text">NEOLUM</span> — Teoría de la Computación & Autómatas
+            <span className="neon-text">NEOLUM</span>
           </p>
         </footer>
       </div>
