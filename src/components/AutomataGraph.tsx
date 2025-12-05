@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Automaton } from '@/lib/automata';
-import { useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface AutomataGraphProps {
   automaton: Automaton;
@@ -14,9 +14,12 @@ interface NodePosition {
 
 export function AutomataGraph({ automaton, title }: AutomataGraphProps) {
   const { states, transitions } = automaton;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [draggingNode, setDraggingNode] = useState<string | null>(null);
+  const [nodePositions, setNodePositions] = useState<Map<string, NodePosition>>(new Map());
 
-  // Calculate node positions in a circular layout
-  const nodePositions = useMemo(() => {
+  // Initialize node positions when automaton changes
+  useEffect(() => {
     const positions: Map<string, NodePosition> = new Map();
     const centerX = 300;
     const centerY = 200;
@@ -30,11 +33,55 @@ export function AutomataGraph({ automaton, title }: AutomataGraphProps) {
       });
     });
 
-    return positions;
+    setNodePositions(positions);
   }, [states]);
 
+  // Convert screen coordinates to SVG coordinates
+  const getSVGCoordinates = useCallback((clientX: number, clientY: number) => {
+    if (!svgRef.current) return { x: 0, y: 0 };
+    
+    const svg = svgRef.current;
+    const point = svg.createSVGPoint();
+    point.x = clientX;
+    point.y = clientY;
+    
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    
+    const svgPoint = point.matrixTransform(ctm.inverse());
+    return { x: svgPoint.x, y: svgPoint.y };
+  }, []);
+
+  const handleMouseDown = useCallback((stateId: string) => {
+    setDraggingNode(stateId);
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!draggingNode) return;
+
+    const { x, y } = getSVGCoordinates(e.clientX, e.clientY);
+    
+    // Clamp to SVG bounds with padding
+    const clampedX = Math.max(40, Math.min(560, x));
+    const clampedY = Math.max(40, Math.min(360, y));
+
+    setNodePositions(prev => {
+      const newPositions = new Map(prev);
+      newPositions.set(draggingNode, { x: clampedX, y: clampedY });
+      return newPositions;
+    });
+  }, [draggingNode, getSVGCoordinates]);
+
+  const handleMouseUp = useCallback(() => {
+    setDraggingNode(null);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setDraggingNode(null);
+  }, []);
+
   // Group transitions by from-to pair
-  const groupedTransitions = useMemo(() => {
+  const groupedTransitions = (() => {
     const groups = new Map<string, string[]>();
     transitions.forEach(t => {
       const key = `${t.from}-${t.to}`;
@@ -44,21 +91,15 @@ export function AutomataGraph({ automaton, title }: AutomataGraphProps) {
       groups.get(key)!.push(t.symbol);
     });
     return groups;
-  }, [transitions]);
+  })();
 
   const renderArrow = (from: NodePosition, to: NodePosition, symbols: string[], isSelfLoop: boolean, index: number) => {
     const nodeRadius = 25;
     
     if (isSelfLoop) {
-      // Self-loop
-      const loopRadius = 20;
-      const startAngle = -Math.PI / 4;
-      const cx = from.x;
-      const cy = from.y - nodeRadius - loopRadius;
-      
       return (
         <g key={`transition-${index}`}>
-          <motion.path
+          <path
             d={`M ${from.x - 10} ${from.y - nodeRadius} 
                 C ${from.x - 30} ${from.y - nodeRadius - 40}, 
                   ${from.x + 30} ${from.y - nodeRadius - 40}, 
@@ -67,39 +108,30 @@ export function AutomataGraph({ automaton, title }: AutomataGraphProps) {
             className="stroke-primary"
             strokeWidth="2"
             markerEnd="url(#arrowhead)"
-            initial={{ pathLength: 0, opacity: 0 }}
-            animate={{ pathLength: 1, opacity: 1 }}
-            transition={{ duration: 0.5, delay: index * 0.1 }}
           />
-          <motion.text
+          <text
             x={from.x}
             y={from.y - nodeRadius - 35}
             textAnchor="middle"
             className="fill-secondary text-sm font-mono font-bold"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 + index * 0.1 }}
           >
             {symbols.join(', ')}
-          </motion.text>
+          </text>
         </g>
       );
     }
 
-    // Calculate direction vector
     const dx = to.x - from.x;
     const dy = to.y - from.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     const unitX = dx / dist;
     const unitY = dy / dist;
 
-    // Adjust start and end points to be on the edge of nodes
     const startX = from.x + unitX * nodeRadius;
     const startY = from.y + unitY * nodeRadius;
     const endX = to.x - unitX * (nodeRadius + 8);
     const endY = to.y - unitY * (nodeRadius + 8);
 
-    // Curve the line slightly for bidirectional edges
     const midX = (startX + endX) / 2;
     const midY = (startY + endY) / 2;
     const perpX = -unitY * 20;
@@ -107,28 +139,22 @@ export function AutomataGraph({ automaton, title }: AutomataGraphProps) {
 
     return (
       <g key={`transition-${index}`}>
-        <motion.path
+        <path
           d={`M ${startX} ${startY} Q ${midX + perpX} ${midY + perpY} ${endX} ${endY}`}
           fill="none"
           className="stroke-primary"
           strokeWidth="2"
           markerEnd="url(#arrowhead)"
-          initial={{ pathLength: 0, opacity: 0 }}
-          animate={{ pathLength: 1, opacity: 1 }}
-          transition={{ duration: 0.5, delay: index * 0.1 }}
         />
-        <motion.text
+        <text
           x={midX + perpX * 0.8}
           y={midY + perpY * 0.8}
           textAnchor="middle"
           dominantBaseline="middle"
           className="fill-secondary text-sm font-mono font-bold"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 + index * 0.1 }}
         >
           {symbols.join(', ')}
-        </motion.text>
+        </text>
       </g>
     );
   };
@@ -145,7 +171,14 @@ export function AutomataGraph({ automaton, title }: AutomataGraphProps) {
     <div className="w-full h-full flex flex-col">
       <h3 className="text-lg font-orbitron neon-text mb-4">{title}</h3>
       <div className="flex-1 relative">
-        <svg viewBox="0 0 600 400" className="w-full h-full">
+        <svg 
+          ref={svgRef}
+          viewBox="0 0 600 400" 
+          className="w-full h-full"
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+        >
           <defs>
             <marker
               id="arrowhead"
@@ -179,21 +212,18 @@ export function AutomataGraph({ automaton, title }: AutomataGraphProps) {
           })}
 
           {/* Render start arrow */}
-          {states.map((state, index) => {
+          {states.map((state) => {
             if (!state.isStart) return null;
             const pos = nodePositions.get(state.id);
             if (!pos) return null;
             return (
-              <motion.path
+              <path
                 key={`start-${state.id}`}
                 d={`M ${pos.x - 60} ${pos.y} L ${pos.x - 28} ${pos.y}`}
                 fill="none"
                 className="stroke-neon-green"
                 strokeWidth="2"
                 markerEnd="url(#arrowhead)"
-                initial={{ pathLength: 0, opacity: 0 }}
-                animate={{ pathLength: 1, opacity: 1 }}
-                transition={{ duration: 0.3 }}
               />
             );
           })}
@@ -202,6 +232,7 @@ export function AutomataGraph({ automaton, title }: AutomataGraphProps) {
           {states.map((state, index) => {
             const pos = nodePositions.get(state.id);
             if (!pos) return null;
+            const isDragging = draggingNode === state.id;
 
             return (
               <motion.g
@@ -209,6 +240,8 @@ export function AutomataGraph({ automaton, title }: AutomataGraphProps) {
                 initial={{ scale: 0, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ duration: 0.3, delay: index * 0.05 }}
+                style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+                onMouseDown={() => handleMouseDown(state.id)}
               >
                 {/* Accept state double circle */}
                 {state.isAccept && (
@@ -227,7 +260,7 @@ export function AutomataGraph({ automaton, title }: AutomataGraphProps) {
                   cx={pos.x}
                   cy={pos.y}
                   r={25}
-                  className={`fill-card stroke-primary ${state.isStart ? 'stroke-[3]' : 'stroke-2'}`}
+                  className={`fill-card stroke-primary ${state.isStart ? 'stroke-[3]' : 'stroke-2'} ${isDragging ? 'stroke-neon-cyan' : ''}`}
                   filter="url(#glow)"
                 />
                 {/* State label */}
@@ -236,7 +269,7 @@ export function AutomataGraph({ automaton, title }: AutomataGraphProps) {
                   y={pos.y}
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  className="fill-foreground text-sm font-mono font-bold"
+                  className="fill-foreground text-sm font-mono font-bold select-none pointer-events-none"
                 >
                   {state.id}
                 </text>
@@ -257,6 +290,9 @@ export function AutomataGraph({ automaton, title }: AutomataGraphProps) {
             <div className="w-2 h-2 rounded-full border border-secondary m-0.5" />
           </div>
           <span>Aceptación</span>
+        </div>
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-xs opacity-60">Arrastra los estados para moverlos</span>
         </div>
       </div>
     </div>
